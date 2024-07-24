@@ -1,6 +1,5 @@
 #include "llama-impl.h"
 #include "llama-vocab.h"
-#include "llama-grammar.h"
 #include "llama-sampling.h"
 
 #include "unicode.h"
@@ -2670,7 +2669,6 @@ struct llama_context {
     llama_context(const llama_model & model)
         : model(model)
         , sampling(llama_n_vocab(&model))
-        , grammar()
         , t_start_us(model.t_start_us)
         , t_load_us(model.t_load_us) {}
 
@@ -2688,7 +2686,6 @@ struct llama_context {
 
     struct llama_cparams        cparams;
     struct llama_sampling       sampling;
-    struct llama_grammar        grammar;
     struct llama_kv_cache       kv_self;
     struct llama_control_vector cvec;
 
@@ -16830,10 +16827,6 @@ const struct llama_vocab * llama_get_vocab(const struct llama_context * ctx) {
     return &ctx->model.vocab;
 }
 
-struct llama_grammar * llama_get_grammar(struct llama_context * ctx) {
-    return &ctx->grammar;
-}
-
 uint32_t llama_n_ctx(const struct llama_context * ctx) {
     return ctx->cparams.n_ctx;
 }
@@ -18937,64 +18930,11 @@ int32_t llama_chat_apply_template(
 }
 
 //
-// grammar
-//
-
-struct llama_grammar * llama_grammar_init(
-        const llama_grammar_element ** rules,
-        size_t    n_rules,
-        size_t    start_rule_index) {
-    return llama_grammar_init_impl(rules, n_rules, start_rule_index);
-}
-
-void llama_grammar_free(struct llama_grammar * grammar) {
-    if (grammar == nullptr) {
-        return;
-    }
-
-    llama_grammar_free_impl(grammar);
-}
-
-struct llama_grammar * llama_grammar_copy(const struct llama_grammar * grammar) {
-    return llama_grammar_copy_impl(*grammar);
-}
-
-void llama_grammar_sample(
-      const struct llama_grammar * grammar,
-      const struct llama_context * ctx,
-          llama_token_data_array * candidates) {
-    time_meas tm(grammar->t_total_us); // TODO: measure grammar time separately from sampling
-
-    llama_grammar_sample_impl(*grammar, ctx->model.vocab, candidates);
-
-    grammar->n_sample++;
-}
-
-// deprecated
-void llama_sample_grammar(
-            struct llama_context * ctx,
-          llama_token_data_array * candidates,
-      const struct llama_grammar * grammar) {
-    llama_grammar_sample(grammar, ctx, candidates);
-}
-
-void llama_grammar_accept_token(
-            struct llama_grammar * grammar,
-            struct llama_context * ctx,
-                     llama_token   token) {
-    time_meas tm(grammar->t_total_us); // TODO: measure grammar time separately from sampling
-
-    llama_grammar_accept_token_impl(*grammar, ctx->model.vocab, token);
-
-    grammar->n_accept++;
-}
-
-//
 // sampling
 //
 
-struct llama_sampling * llama_sampling_init(int32_t n_vocab) {
-    return llama_sampling_init_impl(n_vocab);
+struct llama_sampling * llama_sampling_init(int32_t n_vocab, const char * grammar_str, const char * grammar_root) {
+    return llama_sampling_init_impl(n_vocab, grammar_str, grammar_root);
 }
 
 void llama_sampling_free(struct llama_sampling * smpl) {
@@ -19118,6 +19058,24 @@ llama_token llama_sampling_sample(struct llama_sampling * smpl, llama_token_data
     smpl->n_sample++;
 
     return res;
+}
+
+void llama_sampling_grammar(
+        const struct llama_sampling * smpl,
+         const struct llama_context * ctx,
+             llama_token_data_array * candidates) {
+    time_meas tm(smpl->t_total_us); // TODO: measure grammar time separately from sampling
+
+    llama_sampling_grammar_impl(*smpl, ctx->model.vocab, candidates);
+}
+
+void llama_sampling_accept(
+        struct llama_sampling * smpl,
+         struct llama_context * ctx,
+                  llama_token   token) {
+    time_meas tm(smpl->t_total_us); // TODO: measure grammar time separately from sampling
+
+    llama_sampling_accept_impl(*smpl, ctx->model.vocab, token);
 }
 
 //

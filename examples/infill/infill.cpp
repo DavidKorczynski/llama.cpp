@@ -2,7 +2,6 @@
 
 #include "console.h"
 #include "llama.h"
-#include "grammar-parser.h"
 
 #include <cassert>
 #include <cinttypes>

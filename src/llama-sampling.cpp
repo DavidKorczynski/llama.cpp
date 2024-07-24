@@ -1,5 +1,7 @@
 #include "llama-sampling.h"
 
+#include "llama-grammar.h"
+
 #include <algorithm>
 #include <cstring>
 #include <ctime>
@@ -21,8 +23,20 @@ static void llama_log_softmax(float * array, size_t size) {
     }
 }
 
-struct llama_sampling * llama_sampling_init_impl(int32_t n_vocab) {
-    return new llama_sampling(n_vocab);
+llama_sampling::llama_sampling(int32_t n_vocab, const char * grammar_str, const char * grammar_root) : n_vocab(n_vocab) {
+    if (grammar_str != nullptr) {
+        grammar = llama_grammar_init_impl(grammar_str, grammar_root);
+    }
+}
+
+llama_sampling::~llama_sampling() {
+    if (grammar) {
+        llama_grammar_free_impl(grammar);
+    }
+}
+
+struct llama_sampling * llama_sampling_init_impl(int32_t n_vocab, const char * grammar_str, const char * grammar_root) {
+    return new llama_sampling(n_vocab, grammar_str, grammar_root);
 }
 
 void llama_sampling_free_impl(struct llama_sampling * sampling) {

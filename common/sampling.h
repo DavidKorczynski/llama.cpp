@@ -2,8 +2,6 @@
 
 #include "llama.h"
 
-#include "grammar-parser.h"
-
 #include <random>
 #include <string>
 #include <unordered_map>

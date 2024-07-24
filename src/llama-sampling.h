@@ -1,13 +1,19 @@
 #pragma once
 
 #include "llama-impl.h"
+#include "llama-grammar.h"
+
+struct llama_grammar;
 
 struct llama_sampling {
-    llama_sampling(int32_t n_vocab) : n_vocab(n_vocab) {}
+    llama_sampling(int32_t n_vocab, const char * grammar_str, const char * grammar_root);
+    ~llama_sampling();
 
     const int32_t n_vocab;
 
     std::mt19937 rng;
+
+    struct llama_grammar * grammar = nullptr;
 
     mutable int64_t t_total_us = 0;
 
@@ -18,7 +24,7 @@ struct llama_sampling {
 // internal API
 //
 
-struct llama_sampling * llama_sampling_init_impl(int32_t n_vocab);
+struct llama_sampling * llama_sampling_init_impl(int32_t n_vocab, const char * grammar_str, const char * grammar_root);
 
 void llama_sampling_free_impl(struct llama_sampling * sampling);
 
