@@ -768,6 +768,7 @@ static bool ggml_hash_contains(const struct ggml_hash_set * hash_set, struct ggm
 }
 
 static size_t ggml_hash_insert(struct ggml_hash_set * hash_set, struct ggml_tensor * key) {
+#if 0
     size_t i = ggml_hash_find(hash_set, key);
 
     GGML_ASSERT(i != GGML_HASHSET_FULL);
@@ -780,6 +781,28 @@ static size_t ggml_hash_insert(struct ggml_hash_set * hash_set, struct ggml_tens
     hash_set->keys[i] = key;
 
     return i;
+#endif
+    size_t h = ggml_hash(key) % hash_set->size;
+    //size_t h = ggml_hash(key) & (hash_set->size - 1);
+
+    // linear probing
+    size_t i = h;
+    do {
+        if (!ggml_bitset_get(hash_set->used, i)) {
+            ggml_bitset_set(hash_set->used, i);
+            hash_set->keys[i] = key;
+            return i;
+        }
+        if (hash_set->keys[i] == key) {
+            return GGML_HASHSET_ALREADY_EXISTS;
+        }
+        i = (i + 1) % hash_set->size;
+        //i = (i + 1) & (hash_set->size - 1);
+    } while (i != h);
+
+    // visited all hash table entries -> not found
+    GGML_ASSERT(false);
+
 }
 
 static size_t ggml_hash_find_or_insert(struct ggml_hash_set * hash_set, struct ggml_tensor * key) {

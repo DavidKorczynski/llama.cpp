@@ -7699,7 +7699,8 @@ static int llama_model_load(const std::string & fname, llama_model & model, llam
 // llm_build
 //
 
-using llm_build_cb = std::function<void(struct ggml_tensor * cur, const char * name, int nl)>;
+//using llm_build_cb = std::function<void(struct ggml_tensor * cur, const char * name, int nl)>;
+typedef void (*llm_build_cb)(struct ggml_tensor * cur, const char * name, int nl);
 
 enum llm_ffn_op_type {
     LLM_FFN_SILU,
@@ -8695,7 +8696,10 @@ struct llm_build_context {
     }
 
     struct ggml_cgraph * build_llama() {
+        int64_t t_new_graph_start = ggml_time_us();
         struct ggml_cgraph * gf = ggml_new_graph_custom(ctx0, LLAMA_MAX_NODES, false);
+        int64_t t_new_graph_end = ggml_time_us();
+        //printf("new_graph: %.3f ms\n", (t_new_graph_end - t_new_graph_start) / 1000.0f); // zero
 
         // mutable variable, needed during the last layer of the computation to skip unused tokens
         int32_t n_tokens = this->n_tokens;
@@ -8717,34 +8721,35 @@ struct llm_build_context {
 
         for (int il = 0; il < n_layer; ++il) {
             struct ggml_tensor * inpSA = inpL;
+            auto & l = model.layers[il];
 
             // norm
             cur = llm_build_norm(ctx0, inpL, hparams,
-                    model.layers[il].attn_norm, NULL,
+                    l.attn_norm, NULL,
                     LLM_NORM_RMS, cb, il);
             cb(cur, "attn_norm", il);
 
             // self-attention
             {
                 // compute Q and K and RoPE them
-                struct ggml_tensor * Qcur = llm_build_lora_mm(lctx, ctx0, model.layers[il].wq, cur);
+                struct ggml_tensor * Qcur = llm_build_lora_mm(lctx, ctx0, l.wq, cur);
                 cb(Qcur, "Qcur", il);
-                if (model.layers[il].bq) {
-                    Qcur = ggml_add(ctx0, Qcur, model.layers[il].bq);
+                if (l.bq) {
+                    Qcur = ggml_add(ctx0, Qcur, l.bq);
                     cb(Qcur, "Qcur", il);
                 }
 
-                struct ggml_tensor * Kcur = llm_build_lora_mm(lctx, ctx0, model.layers[il].wk, cur);
+                struct ggml_tensor * Kcur = llm_build_lora_mm(lctx, ctx0, l.wk, cur);
                 cb(Kcur, "Kcur", il);
-                if (model.layers[il].bk) {
-                    Kcur = ggml_add(ctx0, Kcur, model.layers[il].bk);
+                if (l.bk) {
+                    Kcur = ggml_add(ctx0, Kcur, l.bk);
                     cb(Kcur, "Kcur", il);
                 }
 
-                struct ggml_tensor * Vcur = llm_build_lora_mm(lctx, ctx0, model.layers[il].wv, cur);
+                struct ggml_tensor * Vcur = llm_build_lora_mm(lctx, ctx0, l.wv, cur);
                 cb(Vcur, "Vcur", il);
-                if (model.layers[il].bv) {
-                    Vcur = ggml_add(ctx0, Vcur, model.layers[il].bv);
+                if (l.bv) {
+                    Vcur = ggml_add(ctx0, Vcur, l.bv);
                     cb(Vcur, "Vcur", il);
                 }
 
@@ -8763,8 +8768,9 @@ struct llm_build_context {
                 cb(Kcur, "Kcur", il);
 
                 cur = llm_build_kv(ctx0, lctx, kv_self, gf,
-                        model.layers[il].wo, model.layers[il].bo,
-                        Kcur, Vcur, Qcur, KQ_mask, n_tokens, kv_head, n_kv, 1.0f/sqrtf(float(n_embd_head)), cb, il);
+                        l.wo, l.bo,
+                        //Kcur, Vcur, Qcur, KQ_mask, n_tokens, kv_head, n_kv, 1.0f/sqrtf(float(n_embd_head)), cb, il);
+                        Kcur, Vcur, Qcur, KQ_mask, n_tokens, kv_head, n_kv, 1.0f, cb, il);
             }
 
             if (il == n_layer - 1) {
@@ -8779,31 +8785,31 @@ struct llm_build_context {
             cb(ffn_inp, "ffn_inp", il);
 
             // feed-forward network
-            if (model.layers[il].ffn_gate_inp == nullptr) {
+            if (l.ffn_gate_inp == nullptr) {
                 cur = llm_build_norm(ctx0, ffn_inp, hparams,
-                        model.layers[il].ffn_norm, NULL,
+                        l.ffn_norm, NULL,
                         LLM_NORM_RMS, cb, il);
                 cb(cur, "ffn_norm", il);
 
                 cur = llm_build_ffn(ctx0, lctx, cur,
-                        model.layers[il].ffn_up,   model.layers[il].ffn_up_b,   NULL,
-                        model.layers[il].ffn_gate, model.layers[il].ffn_gate_b, NULL,
-                        model.layers[il].ffn_down, model.layers[il].ffn_down_b, NULL,
+                        l.ffn_up,   l.ffn_up_b,   NULL,
+                        l.ffn_gate, l.ffn_gate_b, NULL,
+                        l.ffn_down, l.ffn_down_b, NULL,
                         NULL,
                         LLM_FFN_SILU, LLM_FFN_PAR, cb, il);
                 cb(cur, "ffn_out", il);
             } else {
                 // MoE branch
                 cur = llm_build_norm(ctx0, ffn_inp, hparams,
-                        model.layers[il].ffn_norm, NULL,
+                        l.ffn_norm, NULL,
                         LLM_NORM_RMS, cb, il);
                 cb(cur, "ffn_norm", il);
 
                 cur = llm_build_moe_ffn(ctx0, lctx, cur,
-                        model.layers[il].ffn_gate_inp,
-                        model.layers[il].ffn_up_exps,
-                        model.layers[il].ffn_gate_exps,
-                        model.layers[il].ffn_down_exps,
+                        l.ffn_gate_inp,
+                        l.ffn_up_exps,
+                        l.ffn_gate_exps,
+                        l.ffn_down_exps,
                         n_expert, n_expert_used,
                         LLM_FFN_SILU, true,
                         false, 0.0,
@@ -8831,8 +8837,12 @@ struct llm_build_context {
         // lm_head
         cur = llm_build_lora_mm(lctx, ctx0, model.output, cur);
         cb(cur, "result_output", -1);
+        ggml_set_name(cur, "result_output");
 
+        int64_t t_expand_start = ggml_time_us();
         ggml_build_forward_expand(gf, cur);
+        int64_t t_expand_end = ggml_time_us();
+        //printf("expand time: %.3f ms\n", (t_expand_end - t_expand_start) / 1000.0); // zero
 
         return gf;
     }
@@ -13647,7 +13657,7 @@ static struct ggml_cgraph * llama_build_graph_defrag(llama_context & lctx, const
     llama_batch dummy;
     dummy.n_tokens = 0;
 
-    llm_build_cb cb = [&](struct ggml_tensor * , const char * , int ) { };
+    llm_build_cb cb = [](struct ggml_tensor * , const char * , int ) { };
 
     struct llm_build_context llm(lctx, dummy, cb, false);
 
@@ -13664,7 +13674,7 @@ static struct ggml_cgraph * llama_build_graph_k_shift(llama_context & lctx) {
     llama_batch dummy;
     dummy.n_tokens = 0;
 
-    llm_build_cb cb = [&](struct ggml_tensor * , const char * , int ) { };
+    llm_build_cb cb = [](struct ggml_tensor * , const char * , int ) { };
 
     struct llm_build_context llm(lctx, dummy, cb, false);
 
@@ -13681,7 +13691,7 @@ static struct ggml_cgraph * llama_build_graph_s_copy(llama_context & lctx) {
     llama_batch dummy;
     dummy.n_tokens = 0;
 
-    llm_build_cb cb = [&](struct ggml_tensor * , const char * , int ) { };
+    llm_build_cb cb = [](struct ggml_tensor * , const char * , int ) { };
 
     struct llm_build_context llm(lctx, dummy, cb, false);
 
@@ -13701,6 +13711,7 @@ static struct ggml_cgraph * llama_build_graph(
     const auto & model = lctx.model;
 
     // this callback allows us to apply custom logic to each tensor (e.g. ggml-alloc, offloading, etc.)
+    #if 0
     llm_build_cb cb = [&](struct ggml_tensor * cur, const char * name, int il) {
         if (il >= 0) {
             ggml_format_name(cur, "%s-%d", name, il);
@@ -13730,6 +13741,9 @@ static struct ggml_cgraph * llama_build_graph(
             }
         }
     };
+    #else
+    llm_build_cb cb = [](struct ggml_tensor * , const char * , int ) { };
+    #endif
 
     struct ggml_cgraph * result = NULL;
 
@@ -14479,6 +14493,11 @@ static int llama_decode_internal(
     }
 
     for (uint32_t cur_token = 0; cur_token < n_tokens_all; cur_token += n_ubatch) {
+        int64_t t_start_us = ggml_time_us();
+
+        static int64_t n_runs = -2;
+        n_runs++;
+
         const uint32_t n_tokens = std::min(n_ubatch, n_tokens_all - cur_token);
         llama_batch u_batch = {
             /* .n_tokens   = */ (int32_t) n_tokens,
@@ -14572,7 +14591,23 @@ static int llama_decode_internal(
         ggml_backend_sched_reset(lctx.sched);
         ggml_backend_sched_set_eval_callback(lctx.sched, lctx.cparams.cb_eval, lctx.cparams.cb_eval_user_data);
 
+        if (n_runs >= 1) {
+            double t_start_us = (ggml_time_us() - lctx.t_compute_start_us)/1000.0;
+            static double t_start_us_total = 0;
+            t_start_us_total += t_start_us;
+            //fprintf(stderr, "kv time: %.3f ms, avg: %.3f ms\n", t_start_us, t_start_us_total/n_runs);
+        }
+
+        int64_t t_build_start_us = ggml_time_us();
+
         ggml_cgraph * gf = llama_build_graph(lctx, u_batch, false);
+
+        if (n_runs >= 1) {
+            double t_build_us = (ggml_time_us() - t_build_start_us)/1000.0;
+            static double t_build_us_total = 0;
+            t_build_us_total += t_build_us;
+            //fprintf(stderr, "graph build time: %.3f ms (%d nodes, %d leafs), avg: %.3f ms\n", t_build_us, gf->n_nodes, gf->n_leafs, t_build_us_total/n_runs);
+        }
 
         // the output is always the last tensor in the graph
         struct ggml_tensor * res  = gf->nodes[gf->n_nodes - 1];
@@ -14593,13 +14628,49 @@ static int llama_decode_internal(
             embd = nullptr; // do not extract embeddings when not needed
             GGML_ASSERT(strcmp(res->name, "result_output") == 0 && "missing result_output tensor");
         }
-        // LLAMA_LOG_INFO("graph build time: %.3f ms (%d nodes, %d leafs)\n", (ggml_time_us() - t_start_us)/1000.0, gf->n_nodes, gf->n_leafs);
+
+        int64_t t_alloc_start_us = ggml_time_us();
 
         ggml_backend_sched_alloc_graph(lctx.sched, gf);
 
+        if (n_runs >= 1) {
+            double t_alloc_us = (ggml_time_us() - t_alloc_start_us)/1000.0;
+            static double t_alloc_us_total = 0;
+            t_alloc_us_total += t_alloc_us;
+            //fprintf(stderr, "graph alloc time: %.3f ms, avg: %.3f ms\n", t_alloc_us, t_alloc_us_total/n_runs);
+        }
+
+
+        if (n_runs >= 1) {
+            double t_build_us = (ggml_time_us() - t_start_us)/1000.0;
+            static double t_build_us_total = 0;
+            t_build_us_total += t_build_us;
+            //fprintf(stderr, "all build time: %.3f ms (%d nodes, %d leafs), avg: %.3f ms\n", t_build_us, gf->n_nodes, gf->n_leafs, t_build_us_total/n_runs);
+        }
+
+
+        int64_t t_set_inputs_start_us = ggml_time_us();
+
         llama_set_inputs(lctx, u_batch);
 
+        if (n_runs >= 1) {
+            double t_set_inputs_us = (ggml_time_us() - t_set_inputs_start_us)/1000.0;
+            static double t_set_inputs_us_total = 0;
+            t_set_inputs_us_total += t_set_inputs_us;
+            // fprintf(stderr, "set inputs time: %.3f ms, avg: %.3f ms\n", t_set_inputs_us, t_set_inputs_us_total/n_runs);
+        }
+
+
+        int64_t t_compute_start_us = ggml_time_us();
+
         llama_graph_compute(lctx, gf, n_threads);
+
+        if (n_runs >= 1) {
+            double t_compute_us = (ggml_time_us() - t_compute_start_us)/1000.0;
+            static double t_compute_us_total = 0;
+            t_compute_us_total += t_compute_us;
+            //fprintf(stderr, "graph compute time: %.3f ms, avg: %.3f ms\n", t_compute_us, t_compute_us_total/n_runs);
+        }
 
         // update the kv ring buffer
         {
@@ -14697,7 +14768,18 @@ static int llama_decode_internal(
 
     // Reset state for the next token before backend sync, to allow the CPU activities in the reset to
     // overlap with device computation.
+
+    int64_t t_reset_start_us = ggml_time_us();
     ggml_backend_sched_reset(lctx.sched);
+
+    static int64_t n_runs = -2;
+    n_runs++;
+    if (n_runs >= 1) {
+        double t_reset_us = (ggml_time_us() - t_reset_start_us)/1000.0;
+        static double t_reset_us_total = 0;
+        t_reset_us_total += t_reset_us;
+        //fprintf(stderr, "graph reset time: %.3f ms, avg: %.3f ms\n", t_reset_us, t_reset_us_total/n_runs);
+    }
 
     return 0;
 }

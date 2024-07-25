@@ -821,7 +821,8 @@ static void ggml_gallocr_init_tensor(ggml_gallocr_t galloc, struct ggml_tensor *
 }
 
 static bool ggml_gallocr_node_needs_realloc(ggml_gallocr_t galloc, struct ggml_tensor * node, struct tensor_alloc * talloc) {
-    ggml_backend_buffer_type_t buft = talloc->buffer_id != -1 ? galloc->bufts[talloc->buffer_id] : NULL;
+    //ggml_backend_buffer_type_t buft = talloc->buffer_id != -1 ? galloc->bufts[talloc->buffer_id] : NULL;
+    ggml_backend_buffer_type_t buft = galloc->bufts[talloc->buffer_id];
     size_t node_size = (node->data || node->view_src) ? 0 : ggml_backend_buft_get_alloc_size(buft, node);
     return talloc->size_max >= node_size;
 }
@@ -872,14 +873,14 @@ static bool ggml_gallocr_needs_realloc(ggml_gallocr_t galloc, struct ggml_cgraph
 bool ggml_gallocr_alloc_graph(ggml_gallocr_t galloc, struct ggml_cgraph * graph) {
     if (ggml_gallocr_needs_realloc(galloc, graph)) {
         if (galloc->n_buffers == 1) {
-#ifndef NDEBUG
+#ifndef NDEBUGx
             fprintf(stderr, "%s: reallocating buffers automatically\n", __func__);
 #endif
             if (!ggml_gallocr_reserve(galloc, graph)) {
                 return false;
             }
         } else {
-#ifndef NDEBUG
+#ifndef NDEBUGx
             fprintf(stderr, "%s: cannot reallocate multi buffer graph automatically, call reserve\n", __func__);
 #endif
             return false;

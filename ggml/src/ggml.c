@@ -482,9 +482,10 @@ int64_t ggml_time_ms(void) {
 }
 
 int64_t ggml_time_us(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec*1000000 + (int64_t)ts.tv_nsec/1000;
+    //struct timespec ts;
+    //clock_gettime(CLOCK_MONOTONIC, &ts);
+    //return (int64_t)ts.tv_sec*1000000 + (int64_t)ts.tv_nsec/1000;
+    return 0;
 }
 #endif
 
@@ -4293,16 +4294,18 @@ const char * ggml_get_name(const struct ggml_tensor * tensor) {
 }
 
 struct ggml_tensor * ggml_set_name(struct ggml_tensor * tensor, const char * name) {
-    strncpy(tensor->name, name, sizeof(tensor->name) - 1);
-    tensor->name[sizeof(tensor->name) - 1] = '\0';
+    //strncpy(tensor->name, name, sizeof(tensor->name) - 1);
+    //tensor->name[sizeof(tensor->name) - 1] = '\0';
+    //snprintf(tensor->name, sizeof(tensor->name), "%s", name);
+    strlcpy(tensor->name, name, sizeof(tensor->name));
     return tensor;
 }
 
 struct ggml_tensor * ggml_format_name(struct ggml_tensor * tensor, const char * fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(tensor->name, sizeof(tensor->name), fmt, args);
-    va_end(args);
+    //va_list args;
+    //va_start(args, fmt);
+    //vsnprintf(tensor->name, sizeof(tensor->name), fmt, args);
+    //va_end(args);
     return tensor;
 }
 
@@ -18020,18 +18023,22 @@ static void ggml_visit_parents(struct ggml_cgraph * cgraph, struct ggml_tensor *
         // reached a leaf node, not part of the gradient graph (e.g. a constant)
         GGML_ASSERT(cgraph->n_leafs < cgraph->size);
 
+#ifndef NDEBUG
         if (strlen(node->name) == 0) {
             ggml_format_name(node, "leaf_%d", cgraph->n_leafs);
         }
+#endif
 
         cgraph->leafs[cgraph->n_leafs] = node;
         cgraph->n_leafs++;
     } else {
         GGML_ASSERT(cgraph->n_nodes < cgraph->size);
 
+#ifndef NDEBUG
         if (strlen(node->name) == 0) {
             ggml_format_name(node, "node_%d", cgraph->n_nodes);
         }
+#endif
 
         cgraph->nodes[cgraph->n_nodes] = node;
         if (cgraph->grads) {
@@ -18062,7 +18069,18 @@ static void ggml_build_forward_impl(struct ggml_cgraph * cgraph, struct ggml_ten
 }
 
 void ggml_build_forward_expand(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor) {
+  //  static int64_t t_total = 0;
+
+//    if (cgraph->n_nodes == 0) {
+        //printf("ggml_build_forward_expand: total %.3f ms\n", t_total / 1000.0);
+        //t_total = 0;
+//    }
+
+    //int64_t t_start = ggml_time_us();
     ggml_build_forward_impl(cgraph, tensor, true);
+    //int64_t t_end = ggml_time_us();
+
+    //t_total += t_end - t_start;
 }
 
 void ggml_build_backward_expand(struct ggml_context * ctx, struct ggml_cgraph * gf, struct ggml_cgraph * gb, bool keep) {

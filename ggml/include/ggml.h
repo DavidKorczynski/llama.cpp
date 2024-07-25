@@ -228,11 +228,11 @@
 #define GGML_MAX_DIMS           4
 #define GGML_MAX_PARAMS         2048
 #define GGML_MAX_CONTEXTS       64
-#define GGML_MAX_SRC            10
+#define GGML_MAX_SRC            8
 #ifndef GGML_MAX_NAME
-#define GGML_MAX_NAME           64
+#define GGML_MAX_NAME           32
 #endif
-#define GGML_MAX_OP_PARAMS      64
+#define GGML_MAX_OP_PARAMS      32
 #define GGML_DEFAULT_N_THREADS  4
 #define GGML_DEFAULT_GRAPH_SIZE 2048
 #if UINTPTR_MAX == 0xFFFFFFFF
@@ -272,10 +272,14 @@
 #define GGML_NORETURN _Noreturn
 #endif
 
+#if 1
 #define GGML_ASSERT(x) \
     if (!(x)) { \
         ggml_abort(__FILE__, __LINE__, #x); \
     }
+#else
+#define GGML_ASSERT(x) ((void) 0)
+#endif
 
 // used to copy the number of elements and stride in bytes of tensors into local variables.
 // main purpose is to reduce code duplication and improve readability.
